@@ -1,4 +1,4 @@
-# RPi Pico W 202: HTTP a MQTT protokoly
+# RPi Pico W 202: Protokoly HTTP a MQTT
 
 ![Raspberry Pi Pico W](https://www.telepolis.pl/media/cache/resolve/amp_recommended_size/images/2022/07/raspberry-pi-pico-w-sbc-premiera-cena-00b.jpg)
 
@@ -51,7 +51,7 @@ Vytvárať budeme veľmi naivné riešenie, kde sa nebudeme venovať mnohým kon
 
 Ešte predtým, ako začneme, si pripravte nasledovné:
 
-* Na svoj počítač nainštalujte jednoduchý editor kódu [Thonny](https://thonny.org/) a v jeho menu `Zobraziť` zaškrtnite voľby `Shell` a `Súbory`.
+* Na svoj počítač nainštalujte jednoduchý editor kódu [Thonny] a v jeho menu `Zobraziť` zaškrtnite voľby `Shell` a `Súbory`.
 
 * Ak pracujete v _OS Linux_, tak sa uistite, že váš používateľ má práva na prístup k zariadeniu (obyčajne je to skupina `dialout`). Ak to tak nie je, pridajte používateľa do uvedenej skupiny napr. týmto príkazom:
 
@@ -269,32 +269,40 @@ O kanáloch platí:
 Pre naše potreby si teda vytvoríme skupinu `ossconf` a v nej si vytvoríme kanály pre merané veličiny `temp`, `humidity` a `pressure`.
 
 
-### Odoslanie metriky cez protokol HTTP
+### Formát odosielaných dát
 
-Do každého kanálu môžeme odosielať údaje pomocou HTTP metódy `POST`. Každý kanál má pre tento účel k dispozícii konkrétnu URL adresu, ktorú získame po kliknutí na položku `Feed Info` v pravom bočnom paneli príslušného kanála. URL adresu nájdete pod kľúčom `API`.
+Dáta, ktoré budeme odosielať, musia byť v JSON formáte a budú obsahovať tieto kľúče:
 
+* `lat` - zemepisná šírka
+* `lon` - zemepisná dĺžka
+* `value` - nameraná hodnota
+* `created_at` - čas merania v ISO formáte 
 
+Takže JSON obsahujúci meranie v Žiline môže vyzerať takto:
 
-```bash
-$ http post \
-  https://io.adafruit.com/api/v2/{user}/feeds/{group}.{feed}/data \
-  X-AIO-Key:{aio_key} \
-  datum:='{
-    "lat": 48.6667,
-    "lon": 21.3333,
-    "value": 6.86,
-    "created_at": "2024-10-1T20:36:22Z"
-  }'
+```json
+{
+    "lat": 49.2239,
+    "lon": 18.7394,
+    "value": 9.79,
+    "created_at": "2025-07-02T06:23:00+02:00"
+  }
 ```
 
 
 ### Spracovanie údajov
+
+Ešte predtým, ako sa však dostaneme ku samotnému odoslaniu dát do služby [Adafruit IO] v jazyku _MicroPython_, vytvoríme si dve pomocné funkcie.
+
+Prvá funkcia zabezpečí jednoduchú konverziu časovej značky do ISO8601 formátu času.
 
 ```python
 def to_iso8601(ts: int) -> str:
     dt = time.gmtime(ts)
     return f'{dt[0]:04}-{dt[1]:02}-{dt[2]:02}T{dt[3]:02}:{dt[4]:02}:{dt[5]:02}Z'
 ```
+
+Druhá funkcia bude reprezentovať samotnú úlohu nášho ETL pre transformáiu dát. Jej úlohou bude extrahovať len tie dáta, o ktoré máme záujem. To môže vyzerať napríklad takto:
 
 ```python
 def transform_data(data: dict) -> dict:
@@ -312,6 +320,57 @@ def transform_data(data: dict) -> dict:
 
 
 ## Krok x. Odoslanie údajov do Adafruit IO cez protokol HTTP
+
+### Odoslanie metriky cez protokol HTTP
+
+Do každého kanálu môžeme odosielať údaje pomocou HTTP metódy `POST`. Každý kanál má pre tento účel k dispozícii konkrétnu URL adresu, ktorú získame po kliknutí na položku `Feed Info` v pravom bočnom paneli príslušného kanála. URL adresu nájdete pod kľúčom `API`.
+
+Okrem toho sa však pri každej jednej požiadavke potrebujeme aj autentifikovať pomocou používateľského mena a kľúča. Tieto hodnoty získame po kliknutí na ikonku kľúča, kde tieto hodnoty získame, prípadne ich môžeme nechať znovu vytvoriť.
+
+Overiť zápis do príslušného kanála z príkazového riadku môžeme nasledovne:
+
+```bash
+$ http post \
+  https://io.adafruit.com/api/v2/{user}/feeds/{group}.{feed}/data \
+  X-AIO-Key:{aio_key} \
+  datum:='{
+    "lat": 49.2239,
+    "lon": 18.7394,
+    "value": 9.79,
+    "created_at": "2025-07-02T06:23:00+02:00"
+  }'
+```
+
+
+### Odoslanie metriky v jazyku _MicroPython_
+
+V jazyku _MicroPython_ v _REPL_ režime to môžeme urobiť takto:
+
+```python
+>>> import requests
+
+>>> user = 'jano'
+>>> group = 'ossconf'
+>>> feed = 'temp'
+>>> aio_key = 'secret.password'
+
+>>> url = f'https://io.adafruit.com/api/v2/{aio_username}/feeds/{group}.{feed}/data'
+
+>>> payload = {
+    "lat": 49.2239,
+    "lon": 18.7394,
+    "value": 9.79,
+    "created_at": "2025-07-02T06:23:00+02:00"
+}
+
+>>> headers = {'X-AIO-Key': aio_key}
+>>> response = requests.post(url, headers=headers, json=payload)
+```
+
+
+### Riešenie
+
+Výsledná funkcia môže vyzerať napríklad takto:
 
 ```python
 def load_data(aio_username: str, aio_key: str, group: str, data: dict):
@@ -334,33 +393,51 @@ def load_data(aio_username: str, aio_key: str, group: str, data: dict):
 
 ## Krok x. Odoslanie údajov do Adafruit IO cez protokol MQTT
 
+Do kanálov je možné odosielať dáta aj pomocou protokolu MQTT. A presne to urobíme v tomto kroku.
+
+
 ### Nainštalovanie balíka pre MQTT
 
+Podpora protokolu MQTT vo firmvéri jazyka _MicroPython_ nie je žiadna. Aby teda náš mikrokontrolér vedel komunikovať aj pomocou tohto protokolu, musíme do neho doinštalovať príslušný modul. 
 
-* instalovat modul `umqtt.simple`
-* dá sa cez pipkin - v starsich verziach Pythonu
-* inac rucne:
+To vieme urobiť priamo z prostredia editora [Thonny] pomocou modulu [pipkin](https://github.com/aivarannamaa/pipkin). Problém však je, že od istej verzie jazyka _Python_ už nepracuje správne.
+
+Takže modul pre protokol MQTT nainštalujeme v _REPL_ režime manuálne pomocou modulu `mip` nasledovne:
 
 ```python
-import mip
-mip.install('umqtt.simple')
+>>> import mip
+>>> mip.install('umqtt.simple')
 ```
 
+Po nainštalovaní tento modul uvidíte aj v súborovom systéme v priečinku `lib/`.
+
+
+### Pripojenie k MQTT brokeru
+
+MQTT broker pre službu [Adafruit IO] sa nachádza na adrese `io.adafruit.com` a komunikuje na štandardnom porte `1883`. Pri pripájaní použijete svoje používateľské meno a vygenerovaný kľúč, ku ktorému sa dostanete cez ikonu kľúčika (používali sme ho ako premennú `aio_key`).
+
+Tému pre príslušný kanál zistíte opať v bočnom paneli kanála v položke `Feed Info`.
+
+
 ### Odoslanie metriky cez protokol MQTT
+
+To, či je všetko v poriadku, je možné otestovať z príkazového riadku napr. pomocou `mosquitto_pub` nástroja takto:
 
 ```bash
 $ mosquitto_pub -h io.adafruit.com -u {user} -P {key} \
   -t {user}/feeds/{group}.{feed} \
   -m '{
-    "lat": 48.6667,
-    "lon": 21.3333,
-    "value": 6.86,
-    "created_at": "2024-10-1T20:36:22Z"
+    "lat": 49.2239,
+    "lon": 18.7394,
+    "value": 9.79,
+    "created_at": "2025-07-02T06:23:00+02:00"
   }'
 ```
 
 
 ### Odoslanie skupiny metrík cez protokol MQTT
+
+Ak by ste chceli na jeden šup odoslať viacero metrík, je to možné dosiahnuť týmto spôsobom:
 
 ```bash
 $ mosquitto_pub -h io.adafruit.com -u {user} -P {key} \
@@ -378,7 +455,38 @@ $ mosquitto_pub -h io.adafruit.com -u {user} -P {key} \
   }'
 ```
 
-### Odoslanie údajov cez MQTT
+
+### Odoslanie údajov v jazyku MicroPython
+
+Ak chceme odoslať meranie v jazyku _MicroPython_, môžeme si to vyskúšať v _REPL_ režime pomocou týchto príkazov:
+
+```python
+>>> user = 'jano'
+>>> group = 'ossconf'
+>>> feed = 'temp'
+>>> aio_key = 'secret.password'
+>>> topic = f'{aio_username}/groups/{group}'
+
+>>> payload = {
+    "lat": 49.2239,
+    "lon": 18.7394,
+    "value": 9.79,
+    "created_at": "2025-07-02T06:23:00+02:00"
+}
+
+>>> from umqtt.simple import MQTTClient
+
+>>> client = MQTTClient(unique_id(), 'io.adafruit.com', 1883, 
+                        aio_username, aio_key)
+>>> client.connect()
+>>> client.publish(topic, json.dumps(payload))
+>>> client.disconnect()
+```
+
+
+### Výsledné riešenie
+
+Výsledná funkcia môže vyzerať napríklad takto:
 
 ```python
 from umqtt.simple import MQTTClient
@@ -491,48 +599,6 @@ A následne nainštalujeme príslušný balík pomocou:
 
 Inštalované moduly sa inštalujú do priečinku `/lib/` v mikrokontroléri.
 
-## Krok x. Pripojenie modulu DHT11
-
-![Konektor Grove](images/connector.grove.png)
-
-Senzory DHT11 a DHT22
-
-![DHT11 vs DHT22](images/dht11.vs.dht22.png)
-
-Modul Waveshare DHT11:
-
-![Modul Waveshare DHT11](images/waveshare.dht11.jpg)
-
-Prepojenie modulu Waveshare DHT11
-
-![Propojka z Grove konektoru na 4 pin dupont samicu](images/grove.cable.convertor.jpg)
-
-## Krok x. Publikovanie údajov cez protokol MQTT
-
-### Pripojenie sa k MQTT brokeru
-
-Ak máme nainštalovaný balík `umqtt.simple`, tak sa môžeme pripojiť:
-
-```python
-from umqtt.simple import MQTTClient
-
-mqtt = MQTTClient('client-id', 'broker.ip', keepalive=60)
-mqtt.connect()
-```
-
-**Poznámka:** Ak používate novšiu verziu brokera _Mosquitto_, nezabudnite pridať parameter `keepalive` s hodnotou inou ako `0`. Ináč vám bude vracať kód `2`.
-
-Pre lepšiu diagnostiku chybových kódov vám pomôže nasledujúca tabuľka. Podľa [dokumentácie](https://clouddocs.f5.com/api/irules/MQTT__return_code.html) metóda pri pripájaní môže vrátiť jednu z nasledujúcich chybových kódov:
-
-| kód | význam |
-|-------|------------|
-| `0` | Connection Accepted. |
-| `1` |  Connection Refused. Protocol level not supported. |
-| `2` | Connection Refused. The client-identifier is not allowed by the server. |
-| `3` | Connection Refused. The MQTT service is not available. |
-| `4` | Connection Refused. The data in the username or password is malformed. |
-| `5` | Connection Refused. The client is not authorized to connect. |
-| `6` - `255` | Reserved for future use. |
 
 
 
@@ -551,24 +617,10 @@ Uvedené dielo podlieha licencii [Creative Commons BY-NC-SA 4.0](https://creativ
 
 
 
-1. najprv si pripravíme prostredie - editor Thonny a nahráme firmvér do mikrokontroléra
-2. hneď potom sa pripojíme k WiFi AP pomocou WiFi modulu, ktorý sa na doske nachádza
-3. potom pomocou HTTP protokolu ukradneme údaje o aktuálnom počasí
-4. potom pomocou HTTP protokolu tieto údaje pošleme do služby Adafruit IO, ktorá nám umožní tieto údaje uchovávať, vizualizovať a vytvárať rozličné dashboard-y
-5. následne si ukážeme, že údaje o počasí vieme do služby Adafruit IO poslať aj pomocou protokolu MQTT, až na to, že modul pre podporu tohto protokolu potrebujeme do mikrokontroléra nahrať ručne, pretože ho základný firmvér neobsahuje
-6. sťahovanie a publikovanie údajov budeme vykonávať v pravidelných intervaloch, k čomu nám pomôžu časovače
-7. a ako bonus navyše vytvorím jednoduchý dekorátor, ktorý rozsvieti LED diódu na doske vždy, keď sa začne sťahovanie a publikovanie údajov do služby Adafruit IO
 
 
-
-
-
-
-
-![Rozloženie pinov na doske Raspberry Pi Pico W](images/picow.pinout.svg)
-
-![Cytron Maker Pi Pico Base](images/cytron.maker.pi.pico.png)
 
 
 [Adafruit IO]: https://io.adafruit.com/
 [Open Weather]: https://openweathermap.org/
+[Thonny]: https://thonny.org/
