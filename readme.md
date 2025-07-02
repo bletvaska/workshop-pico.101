@@ -243,9 +243,37 @@ def extract_data(query: str, units: str, appid: str) -> dict:
 ```
 
 
-## Krok x. Odoslanie údajov do Adafruit IO cez protokol HTTP
+## Krok x. Spracovanie prijatých údajov
+
+Našim cieľom je dostať získané dáta o počasí do služby [Adafruit IO]. Najprv sa však pozrieme na to, v akom formáte a v akom tvare služba od nás tieto dáta prijme a pred samotným odoslaním získané dáta do tohto tvaru transformujeme.
+
+[![Adafruit IO](https://cdn-learn.adafruit.com/assets/assets/000/039/803/original/adafruit_io_logo_black.png?1488555837)](https://io.adafruit.com/bletvask)
+
+
+### Adafruit IO kanály
+
+Ešte skôr, ako začneme, potrebujeme sa zoznámiť s konceptov tzv. _kanálov_ (z angl. _feeds_(. V [Adafruit IO] sú kanály základným stavebným prvkom, pomocou ktorého sa ukladajú a organizujú dáta. Každý kanál je ako databázová tabuľka alebo kontajner, ktorý uchováva chronologický záznam hodnôt.
+
+O kanáloch platí:
+
+* Kanál je miesto, kam môžeš odosielať údaje (napr. teplota, vlhkosť, stav tlačidla atď.).
+
+* Do kanála je možné údaje nielen zapisovať ale aj čítať.
+
+* Používa sa na vizualizáciu údajov cez dashboardy (grafy, gauge, tlačidlá, prepínače).
+
+* Každý kanál má svoje jedinečné meno a môže byť verejný alebo súkromný.
+
+* Viacero kanálov môže byť organizovaných do jednej skupiny.
+
+Pre naše potreby si teda vytvoríme skupinu `ossconf` a v nej si vytvoríme kanály pre merané veličiny `temp`, `humidity` a `pressure`.
+
 
 ### Odoslanie metriky cez protokol HTTP
+
+Do každého kanálu môžeme odosielať údaje pomocou HTTP metódy `POST`. Každý kanál má pre tento účel k dispozícii konkrétnu URL adresu, ktorú získame po kliknutí na položku `Feed Info` v pravom bočnom paneli príslušného kanála. URL adresu nájdete pod kľúčom `API`.
+
+
 
 ```bash
 $ http post \
@@ -283,7 +311,7 @@ def transform_data(data: dict) -> dict:
 ```
 
 
-### Odoslanie údajov cez HTTP
+## Krok x. Odoslanie údajov do Adafruit IO cez protokol HTTP
 
 ```python
 def load_data(aio_username: str, aio_key: str, group: str, data: dict):
