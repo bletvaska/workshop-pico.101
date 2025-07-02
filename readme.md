@@ -1,4 +1,4 @@
-# Raspberry Pi Pico W MicroPython Workshop
+# RPi Pico W 202: HTTP a MQTT protokoly
 
 ![Raspberry Pi Pico W](https://www.telepolis.pl/media/cache/resolve/amp_recommended_size/images/2022/07/raspberry-pi-pico-w-sbc-premiera-cena-00b.jpg)
 
@@ -27,6 +27,11 @@ Vytvoríme vlastne jednoduché ETL, ktoré bude vyzerať takto:
 ```
 
 Každú jednu úlohu pritom implementujeme vo forme samostatnej Python funkcie.
+
+
+## Naivné riešenie
+
+Vytvárať budeme veľmi naivné riešenie, kde sa nebudeme venovať mnohým kontrolám, ktoré by sme pri reálnom nasadení riešili, ako napr. HTTP status odpovedí, výpadok spojenia a pod. Niekoľko odporúčaní sa tu ale objaví.
 
 
 ## Niekoľko tipov pre prácu s mikrokontrolérom
@@ -87,6 +92,7 @@ MicroPython v1.21.0 on 2023-10-06; Raspberry Pi Pico W with RP2040
 Type "help()" for more information.
 >>>
 ```
+
 
 ## Krok 2. Režim REPL a Hello world!
 
@@ -151,11 +157,74 @@ Odpojiť sa je možné pomocou dvoch metód nad sieťovým rozhraním:
 
 ## Krok x. Stiahnutie aktuálneho počasia
 
+Cieľom prvej úlohy v našom ETL je stiahnutie informácií o aktuálnom počasí. Vytvoríme preto funkciu `extract_data()`, v ktorej túto úlohu implementujeme.
+
 Na získanie informácií o aktuálnom počasí budeme používať službu [Open Weather]. Služba poskytuje REST API, pomocou ktorého je rozlične sa dopytovať a získavať či už aktuálne alebo historické dáta o počasí.
 
-Aktuálne počasie budeme vedieť získať aj pomocou bezplatného účtu. Na to použijeme modul `requests`, ktorý je mikro implementáciou dobre známeho a veľmi populárneho modulu s rovnomenným názvom [`requests`](https://requests.readthedocs.io/en/latest/)
+Pre použitie dát zo služby je potrebné mať účet. Aktuálne počasie budeme vedieť získať aj pomocou bezplatného účtu. Na to použijeme modul `requests`, ktorý je mikro implementáciou dobre známeho a veľmi populárneho _Python_ modulu s rovnomenným názvom [`requests`](https://requests.readthedocs.io/en/latest/)
 
-Vytvoríme teda funkciu `extract_data()`, ktorá môže vyzerať takto:
+
+### Formát URL adresy
+
+Obecne sa URL adresa skladá z niekoľkých častí:
+
+* schéme alebo protokol
+* host
+* port
+* cesta
+* parametre požiadavky
+
+Jednotlivé jej časti je možné vidieť na nasledovnom obrázku:
+
+![Formát URL adresy](images/url.format.explained.png)
+
+
+### HTTP API
+
+Dokumentácia pre HTTP požiadavky na získanie aktuálneho počasia sa nachádza na [tejto stránke](https://openweathermap.org/current).
+
+Ak by sme napríklad chceli získať informácie o aktuálnom počasí v Žiline v metrickej sústave, jej URL adresa bude vyzerať takto:
+
+```
+https://api.openweathermap.org/data/2.5/weather?q=zilina&units=metric&appid=9e547051a2a00f2bf3e17a160063002d
+```
+
+Samotnú HTTP požiadavku si môžeme overiť okrem prehliadača aj z príkazového riadku pomocou HTTP klientov, ako je napríklad `httpie` takto:
+
+```bash
+$ http https://api.openweathermap.org/data/2.5/weather \
+  q==zilina \
+  units==metric \
+  appid==9e547051a2a00f2bf3e17a160063002d
+```
+
+### HTTP požiadavka pomocou modulu `requests`
+
+V jazyku MicroPython si takýto dopyt môžeme vyskúšať priamo v REPL režime takto:
+
+```python
+>>> import requests
+>>> response = requests.get('https://api.openweathermap.org/data/2.5/weather?q=zilina&units=metric&appid=9e547051a2a00f2bf3e17a160063002d')
+```
+
+Výsledkom bude objekt typu `Response`, ktorý má niekoľko metód. Keďže vieme, že odpoveď bude vo formáte JSON, môžeme nad objektom odpovede rovno zavolať metódu `.json()`:
+
+```python
+>>> response.json()
+```
+
+
+### Riešenie
+
+Vytvoríme teda funkciu `extract_data()`, ktorá bude mať 3 parametre:
+
+* `query` - požiadavku alebo mesto, o ktorom chceme získať informácie
+* `units` - v akých jednotkách bude výsledná hodnota (`metric | imperial | standard`)
+* `appid` - aplikačný kľúč
+
+Funkcia vráti slovník s načítanými údajmi.
+
+Riešenie môže vyzerať napríklad takto:
 
 ```python
 import requests
