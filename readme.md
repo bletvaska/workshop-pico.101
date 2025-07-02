@@ -1,4 +1,4 @@
-# RPi Pico W 202: Protokoly HTTP a MQTT
+# Práca s protokolmi HTTP a MQTT v jazyku MicroPython
 
 ![Raspberry Pi Pico W](https://www.telepolis.pl/media/cache/resolve/amp_recommended_size/images/2022/07/raspberry-pi-pico-w-sbc-premiera-cena-00b.jpg)
 
